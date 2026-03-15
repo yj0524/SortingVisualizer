@@ -329,46 +329,6 @@ async function cycleSort(ctx) {
     }
 }
 
-async function pancakeSort(ctx) {
-    async function flip(end) {
-        let start = 0;
-        while (start < end) {
-            await swapValue(ctx, start, end);
-            start += 1;
-            end -= 1;
-        }
-    }
-    for (let size = ctx.values.length; size > 1; size -= 1) {
-        let maxIdx = 0;
-        for (let i = 1; i < size; i += 1) {
-            if ((await compare(ctx, maxIdx, i)) < 0) {
-                maxIdx = i;
-            }
-        }
-        if (maxIdx !== size - 1) {
-            if (maxIdx > 0) {
-                await flip(maxIdx);
-            }
-            await flip(size - 1);
-        }
-    }
-}
-
-async function stoogeSort(ctx) {
-    async function sort(l, r) {
-        if ((await compare(ctx, l, r)) > 0) {
-            await swapValue(ctx, l, r);
-        }
-        if (r - l + 1 > 2) {
-            const t = Math.floor((r - l + 1) / 3);
-            await sort(l, r - t);
-            await sort(l + t, r);
-            await sort(l, r - t);
-        }
-    }
-    await sort(0, ctx.values.length - 1);
-}
-
 async function quickSortLomuto(ctx) {
     async function partition(low, high) {
         const pivot = ctx.values[high];
@@ -422,6 +382,49 @@ async function quickSortHoare(ctx) {
             const p = await partition(low, high);
             await sort(low, p);
             await sort(p + 1, high);
+        }
+    }
+    await sort(0, ctx.values.length - 1);
+}
+
+async function dualPivotQuickSort(ctx) {
+    async function partition(low, high) {
+        if ((await compare(ctx, low, high)) > 0) {
+            await swapValue(ctx, low, high);
+        }
+        const pivot1 = ctx.values[low];
+        const pivot2 = ctx.values[high];
+        let i = low + 1;
+        let lt = low + 1;
+        let gt = high - 1;
+        while (i <= gt) {
+            ctx.compareCount += 1;
+            await mark(ctx, [i], "active");
+            if (ctx.values[i] < pivot1) {
+                await swapValue(ctx, i, lt);
+                lt += 1;
+                i += 1;
+            } else if (ctx.values[i] > pivot2) {
+                await swapValue(ctx, i, gt);
+                gt -= 1;
+            } else {
+                i += 1;
+            }
+        }
+        lt -= 1;
+        gt += 1;
+        await swapValue(ctx, low, lt);
+        await swapValue(ctx, high, gt);
+        return [lt, gt];
+    }
+    async function sort(low, high) {
+        if (low < high) {
+            const [p1, p2] = await partition(low, high);
+            ctx.sorted.add(p1);
+            ctx.sorted.add(p2);
+            await sort(low, p1 - 1);
+            await sort(p1 + 1, p2 - 1);
+            await sort(p2 + 1, high);
         }
     }
     await sort(0, ctx.values.length - 1);
@@ -944,37 +947,141 @@ async function bogobogoSort(ctx) {
     }
 }
 
+async function pancakeSort(ctx) {
+    async function flip(end) {
+        let start = 0;
+        while (start < end) {
+            await swapValue(ctx, start, end);
+            start += 1;
+            end -= 1;
+        }
+    }
+    for (let size = ctx.values.length; size > 1; size -= 1) {
+        let maxIdx = 0;
+        for (let i = 1; i < size; i += 1) {
+            if ((await compare(ctx, maxIdx, i)) < 0) {
+                maxIdx = i;
+            }
+        }
+        if (maxIdx !== size - 1) {
+            if (maxIdx > 0) {
+                await flip(maxIdx);
+            }
+            await flip(size - 1);
+        }
+    }
+}
+
+async function stoogeSort(ctx) {
+    async function sort(l, r) {
+        if ((await compare(ctx, l, r)) > 0) {
+            await swapValue(ctx, l, r);
+        }
+        if (r - l + 1 > 2) {
+            const t = Math.floor((r - l + 1) / 3);
+            await sort(l, r - t);
+            await sort(l + t, r);
+            await sort(l, r - t);
+        }
+    }
+    await sort(0, ctx.values.length - 1);
+}
+
+async function slowSort(ctx) {
+    async function sort(l, r) {
+        if (l >= r) {
+            return;
+        }
+        const m = Math.floor((l + r) / 2);
+        await sort(l, m);
+        await sort(m + 1, r);
+        if ((await compare(ctx, m, r)) > 0) {
+            await swapValue(ctx, m, r);
+        }
+        await sort(l, r - 1);
+    }
+    await sort(0, ctx.values.length - 1);
+}
+
+async function tournamentSort(ctx) {
+    async function sort() {
+        const n = ctx.values.length;
+        if (n <= 1) {
+            return;
+        }
+        const work = [...ctx.values];
+        const tree = Array(2 * n).fill(-1);
+        async function pickWinner(a, b) {
+            if (a === -1) {
+                return b;
+            }
+            if (b === -1) {
+                return a;
+            }
+            ctx.compareCount += 1;
+            await mark(ctx, [a, b]);
+            if (work[a] < work[b]) {
+                return a;
+            }
+            if (work[a] > work[b]) {
+                return b;
+            }
+            return a;
+        }
+        for (let i = 0; i < n; i += 1) {
+            tree[n + i] = i;
+        }
+        for (let i = n - 1; i > 0; i -= 1) {
+            tree[i] = await pickWinner(tree[i * 2], tree[i * 2 + 1]);
+        }
+        for (let out = 0; out < n; out += 1) {
+            const winner = tree[1];
+            await writeValue(ctx, out, work[winner], "aux");
+            work[winner] = Infinity;
+            let pos = Math.floor((winner + n) / 2);
+            while (pos > 0) {
+                tree[pos] = await pickWinner(tree[pos * 2], tree[pos * 2 + 1]);
+                pos = Math.floor(pos / 2);
+            }
+        }
+    }
+    await sort();
+}
+
 const algorithms = [
-    { key: "bubble", name: "Bubble Sort", koreanName: "버블 정렬", fn: bubbleSort, category: "교환" },
-    { key: "selection", name: "Selection Sort", koreanName: "선택 정렬", fn: selectionSort, category: "선택" },
-    { key: "insertion", name: "Insertion Sort", koreanName: "삽입 정렬", fn: insertionSort, category: "삽입" },
-    { key: "binary-insertion", name: "Binary Insertion Sort", koreanName: "이진 삽입 정렬", fn: binaryInsertionSort, category: "삽입" },
-    { key: "shell", name: "Shell Sort", koreanName: "셸 정렬", fn: shellSort, category: "삽입" },
-    { key: "comb", name: "Comb Sort", koreanName: "빗질 정렬", fn: combSort, category: "교환" },
-    { key: "cocktail", name: "Cocktail Sort", koreanName: "칵테일 정렬", fn: cocktailSort, category: "교환" },
-    { key: "gnome", name: "Gnome Sort", koreanName: "그놈 정렬", fn: gnomeSort, category: "교환" },
-    { key: "odd-even", name: "Odd-Even Sort", koreanName: "홀짝 정렬", fn: oddEvenSort, category: "교환" },
-    { key: "cycle", name: "Cycle Sort", koreanName: "순환 정렬", fn: cycleSort, category: "선택" },
-    { key: "pancake", name: "Pancake Sort", koreanName: "팬케이크 정렬", fn: pancakeSort, category: "기타" },
-    { key: "stooge", name: "Stooge Sort", koreanName: "스투지 정렬", fn: stoogeSort, category: "기타" },
-    { key: "quick-lomuto", name: "Quick Sort (Lomuto)", koreanName: "퀵 정렬 (로무토)", fn: quickSortLomuto, category: "분할 정복" },
-    { key: "quick-hoare", name: "Quick Sort (Hoare)", koreanName: "퀵 정렬 (호어)", fn: quickSortHoare, category: "분할 정복" },
-    { key: "merge", name: "Merge Sort", koreanName: "병합 정렬", fn: mergeSort, category: "분할 정복" },
-    { key: "bottom-up-merge", name: "Bottom-Up Merge Sort", koreanName: "상향식 병합 정렬", fn: bottomUpMergeSort, category: "분할 정복" },
-    { key: "heap", name: "Heap Sort", koreanName: "힙 정렬", fn: heapSort, category: "힙" },
-    { key: "min-heap", name: "Min-Heap Sort", koreanName: "최소 힙 정렬", fn: minHeapSort, category: "힙" },
-    { key: "counting", name: "Counting Sort", koreanName: "계수 정렬", fn: countingSort, category: "분포" },
-    { key: "radix-lsd", name: "Radix Sort (LSD)", koreanName: "기수 정렬 (LSD)", fn: radixSortLSD, category: "분포" },
-    { key: "radix-msd", name: "Radix Sort (MSD)", koreanName: "기수 정렬 (MSD)", fn: radixSortMSD, category: "분포" },
-    { key: "bucket", name: "Bucket Sort", koreanName: "버킷 정렬", fn: bucketSort, category: "분포" },
-    { key: "pigeonhole", name: "Pigeonhole Sort", koreanName: "비둘기집 정렬", fn: pigeonholeSort, category: "분포" },
-    { key: "bead", name: "Bead Sort", koreanName: "비드 정렬", fn: beadSort, category: "분포" },
-    { key: "tim", name: "TimSort-like", koreanName: "팀 정렬 계열", fn: timSortLike, category: "하이브리드" },
-    { key: "intro", name: "IntroSort", koreanName: "인트로 정렬", fn: introSort, category: "하이브리드" },
-    { key: "smooth", name: "SmoothSort-like", koreanName: "부드러운 정렬 계열", fn: smoothSortLike, category: "하이브리드" },
-    { key: "bitonic", name: "Bitonic Sort", koreanName: "바이토닉 정렬", fn: bitonicSort, category: "병렬" },
-    { key: "bogo", name: "Bogo Sort", koreanName: "보고 정렬", fn: bogoSort, category: "무작위" },
-    { key: "bogobogo", name: "Bogobogo Sort", koreanName: "보고보고 정렬", fn: bogobogoSort, category: "무작위" }
+    { key: "bubble", name: "Bubble Sort", koreanName: "버블 정렬", fn: bubbleSort, category: "Exchange", koreanCategory: "교환" },
+    { key: "selection", name: "Selection Sort", koreanName: "선택 정렬", fn: selectionSort, category: "Selection", koreanCategory: "선택" },
+    { key: "insertion", name: "Insertion Sort", koreanName: "삽입 정렬", fn: insertionSort, category: "Insertion", koreanCategory: "삽입" },
+    { key: "binary-insertion", name: "Binary Insertion Sort", koreanName: "이진 삽입 정렬", fn: binaryInsertionSort, category: "Insertion", koreanCategory: "삽입" },
+    { key: "shell", name: "Shell Sort", koreanName: "셸 정렬", fn: shellSort, category: "Insertion", koreanCategory: "삽입" },
+    { key: "comb", name: "Comb Sort", koreanName: "빗질 정렬", fn: combSort, category: "Exchange", koreanCategory: "교환" },
+    { key: "cocktail", name: "Cocktail Sort", koreanName: "칵테일 정렬", fn: cocktailSort, category: "Exchange", koreanCategory: "교환" },
+    { key: "gnome", name: "Gnome Sort", koreanName: "그놈 정렬", fn: gnomeSort, category: "Exchange", koreanCategory: "교환" },
+    { key: "odd-even", name: "Odd-Even Sort", koreanName: "홀짝 정렬", fn: oddEvenSort, category: "Exchange", koreanCategory: "교환" },
+    { key: "cycle", name: "Cycle Sort", koreanName: "순환 정렬", fn: cycleSort, category: "Selection", koreanCategory: "선택" },
+    { key: "quick-lomuto", name: "Quick Sort (Lomuto)", koreanName: "퀵 정렬 (로무토)", fn: quickSortLomuto, category: "Exchange", koreanCategory: "교환" },
+    { key: "quick-hoare", name: "Quick Sort (Hoare)", koreanName: "퀵 정렬 (호어)", fn: quickSortHoare, category: "Exchange", koreanCategory: "교환" },
+    { key: "dual-pivot-quick", name: "Dual-Pivot Quick Sort", koreanName: "듀얼 피벗 퀵 정렬", fn: dualPivotQuickSort, category: "Exchange", koreanCategory: "교환" },
+    { key: "merge", name: "Merge Sort", koreanName: "병합 정렬", fn: mergeSort, category: "Merge", koreanCategory: "병합" },
+    { key: "bottom-up-merge", name: "Bottom-Up Merge Sort", koreanName: "상향식 병합 정렬", fn: bottomUpMergeSort, category: "Merge", koreanCategory: "병합" },
+    { key: "heap", name: "Heap Sort", koreanName: "힙 정렬", fn: heapSort, category: "Selection", koreanCategory: "선택" },
+    { key: "min-heap", name: "Min-Heap Sort", koreanName: "최소 힙 정렬", fn: minHeapSort, category: "Selection", koreanCategory: "선택" },
+    { key: "counting", name: "Counting Sort", koreanName: "계수 정렬", fn: countingSort, category: "Distribution", koreanCategory: "분포" },
+    { key: "radix-lsd", name: "Radix Sort (LSD)", koreanName: "기수 정렬 (LSD)", fn: radixSortLSD, category: "Distribution", koreanCategory: "분포" },
+    { key: "radix-msd", name: "Radix Sort (MSD)", koreanName: "기수 정렬 (MSD)", fn: radixSortMSD, category: "Distribution", koreanCategory: "분포" },
+    { key: "bucket", name: "Bucket Sort", koreanName: "버킷 정렬", fn: bucketSort, category: "Distribution", koreanCategory: "분포" },
+    { key: "pigeonhole", name: "Pigeonhole Sort", koreanName: "비둘기집 정렬", fn: pigeonholeSort, category: "Distribution", koreanCategory: "분포" },
+    { key: "bead", name: "Bead Sort", koreanName: "비드 정렬", fn: beadSort, category: "Distribution", koreanCategory: "분포" },
+    { key: "tim", name: "TimSort-like", koreanName: "팀 정렬 계열", fn: timSortLike, category: "Hybrid", koreanCategory: "하이브리드" },
+    { key: "intro", name: "IntroSort", koreanName: "인트로 정렬", fn: introSort, category: "Hybrid", koreanCategory: "하이브리드" },
+    { key: "smooth", name: "SmoothSort-like", koreanName: "부드러운 정렬 계열", fn: smoothSortLike, category: "Selection", koreanCategory: "선택" },
+    { key: "bitonic", name: "Bitonic Sort", koreanName: "바이토닉 정렬", fn: bitonicSort, category: "Concurrent", koreanCategory: "병렬" },
+    { key: "bogo", name: "Bogo Sort", koreanName: "보고 정렬", fn: bogoSort, category: "Impractical", koreanCategory: "비실용" },
+    { key: "bogobogo", name: "Bogobogo Sort", koreanName: "보고보고 정렬", fn: bogobogoSort, category: "Impractical", koreanCategory: "비실용" },
+    { key: "pancake", name: "Pancake Sort", koreanName: "팬케이크 정렬", fn: pancakeSort, category: "Other", koreanCategory: "기타" },
+    { key: "stooge", name: "Stooge Sort", koreanName: "스투지 정렬", fn: stoogeSort, category: "Impractical", koreanCategory: "비실용" },
+    { key: "slow", name: "Slow Sort", koreanName: "느린 정렬", fn: slowSort, category: "Impractical", koreanCategory: "비실용" },
+    { key: "tournament", name: "Tournament Sort", koreanName: "토너먼트 정렬", fn: tournamentSort, category: "Selection", koreanCategory: "선택" }
 ];
 
 export default function SortingVisualizer() {
@@ -1119,7 +1226,7 @@ export default function SortingVisualizer() {
                                 <div className="flex items-center justify-between text-sm">
                                     <span>알고리즘 선택</span>
                                     <Badge variant="secondary" className="rounded-full">
-                                        {currentAlgorithm.category}
+                                        {currentAlgorithm.category} / {currentAlgorithm.koreanCategory}
                                     </Badge>
                                 </div>
                                 <Select value={selected} onValueChange={setSelected} disabled={isRunning}>
@@ -1129,7 +1236,7 @@ export default function SortingVisualizer() {
                                     <SelectContent className="max-h-96">
                                         {Object.entries(groupedAlgorithms).map(([category, items]) => (
                                             <div key={category}>
-                                                <div className="px-2 py-1 text-xs font-semibold text-slate-500">{category}</div>
+                                                <div className="px-2 py-1 text-xs font-semibold text-slate-500">{category} / {groupedAlgorithms[category][0].koreanCategory}</div>
                                                 {items.map((algorithm) => (
                                                     <SelectItem key={algorithm.key} value={algorithm.key}>
                                                         <span className="flex items-center gap-2">
