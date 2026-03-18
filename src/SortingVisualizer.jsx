@@ -378,7 +378,6 @@ async function quickSortLomuto(ctx) {
         let i = low;
         for (let j = low; j < high; j += 1) {
             ctx.compareCount += 1;
-            await mark(ctx, [j, high], "aux");
             if (ctx.values[j] < pivot) {
                 await swapValue(ctx, i, j);
                 i += 1;
