@@ -1202,11 +1202,11 @@ export default function SortingVisualizer() {
     }
 
     function formatElapsedTime(ms) {
-        if (ms < 1000) {
-            return `${Math.round(ms)} ms`;
+        if (ms < 60 * 1000) {
+            return `${(ms / 1000).toFixed(2)}s`;
         }
 
-        return `${(ms / 1000).toFixed(2)} s`;
+        return `${Math.floor(ms / (60 * 1000))}m ${((ms % (60 * 1000)) / 1000).toFixed(2)}s`;
     }
 
     const maxValue = Math.max(...values, 1);
