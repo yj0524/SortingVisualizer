@@ -46,7 +46,6 @@ function createContext(values, controls) {
         active: new Set(),
         sorted: new Set(),
         aux: new Set(),
-        pivot: new Set(),
         controls,
     };
 }
@@ -58,7 +57,6 @@ async function flush(ctx) {
         active: new Set(ctx.active),
         sorted: new Set(ctx.sorted),
         aux: new Set(ctx.aux),
-        pivot: new Set(ctx.pivot),
         stats: {
             compares: ctx.compareCount,
             swaps: ctx.swapCount,
@@ -94,12 +92,6 @@ async function compare(ctx, i, j) {
     ctx.active.add(j);
     await flush(ctx);
     return ctx.values[i] - ctx.values[j];
-}
-
-async function setPivot(ctx, indices = []) {
-    ctx.pivot.clear();
-    indices.forEach((i) => ctx.pivot.add(i));
-    await flush(ctx);
 }
 
 async function writeValue(ctx, i, value, kind = "active") {
@@ -340,8 +332,6 @@ async function cycleSort(ctx) {
 async function quickSortHoare(ctx) {
     async function partition(low, high) {
         const pivot = ctx.values[Math.floor((low + high) / 2)];
-        const pivotIndex = Math.floor((low + high) / 2);
-        await setPivot(ctx, [pivotIndex]);
         let i = low - 1;
         let j = high + 1;
         while (true) {
@@ -374,10 +364,10 @@ async function quickSortHoare(ctx) {
 async function quickSortLomuto(ctx) {
     async function partition(low, high) {
         const pivot = ctx.values[high];
-        await setPivot(ctx, [high]);
         let i = low;
         for (let j = low; j < high; j += 1) {
             ctx.compareCount += 1;
+            await mark(ctx, [j, high], "aux");
             if (ctx.values[j] < pivot) {
                 await swapValue(ctx, i, j);
                 i += 1;
@@ -398,11 +388,9 @@ async function quickSortLomuto(ctx) {
 }
 
 async function dualPivotQuickSort(ctx) {
-    await setPivot(ctx, [0, ctx.values.length - 1]);
     async function partition(low, high) {
         if ((await compare(ctx, low, high)) > 0) {
             await swapValue(ctx, low, high);
-            await setPivot(ctx, [low, high]);
         }
         const pivot1 = ctx.values[low];
         const pivot2 = ctx.values[high];
@@ -828,7 +816,6 @@ async function introSort(ctx) {
     }
     async function partition(low, high) {
         const pivot = ctx.values[high];
-        await setPivot(ctx, [high]);
         let i = low;
         for (let j = low; j < high; j += 1) {
             ctx.compareCount += 1;
@@ -1106,7 +1093,6 @@ export default function SortingVisualizer() {
     const [active, setActive] = useState(new Set());
     const [sorted, setSorted] = useState(new Set());
     const [aux, setAux] = useState(new Set());
-    const [pivot, setPivot] = useState(new Set());
     const [stats, setStats] = useState({ compares: 0, swaps: 0, writes: 0 });
     const [elapsedMs, setElapsedMs] = useState(0);
     const stopRef = useRef(false);
@@ -1159,7 +1145,6 @@ export default function SortingVisualizer() {
         startedAtRef.current = 0;
         setValues(randomArray(nextSize));
         setActive(new Set());
-        setPivot(new Set());
         setSorted(new Set());
         setAux(new Set());
         setStats({ compares: 0, swaps: 0, writes: 0 });
@@ -1176,7 +1161,6 @@ export default function SortingVisualizer() {
         setActive(new Set());
         setSorted(new Set());
         setAux(new Set());
-        setPivot(new Set());
         setStats({ compares: 0, swaps: 0, writes: 0 });
         setElapsedMs(0);
 
@@ -1184,12 +1168,11 @@ export default function SortingVisualizer() {
         const ctx = createContext(working, {
             delay,
             shouldStop: () => stopRef.current,
-            setState: ({ values: nextValues, active: nextActive, sorted: nextSorted, aux: nextAux, pivot: nextPivot, stats: nextStats }) => {
+            setState: ({ values: nextValues, active: nextActive, sorted: nextSorted, aux: nextAux, stats: nextStats }) => {
                 setValues(nextValues);
                 setActive(nextActive);
                 setSorted(nextSorted);
                 setAux(nextAux);
-                setPivot(nextPivot);
                 setStats(nextStats);
             },
         });
@@ -1214,12 +1197,16 @@ export default function SortingVisualizer() {
         setIsRunning(false);
     }
 
+    function speedUp() {
+        setDelay((prev) => Math.max(MIN_DELAY, prev - 10));
+    }
+
     function formatElapsedTime(ms) {
-        if (ms < 60000) {
-            return `${(ms / 1000).toFixed(2)}s`;
+        if (ms < 1000) {
+            return `${Math.round(ms)} ms`;
         }
 
-        return `${Math.floor(ms / 60000)}m ${((ms % 60000) / 1000).toFixed(2)}s`;
+        return `${(ms / 1000).toFixed(2)} s`;
     }
 
     const maxValue = Math.max(...values, 1);
@@ -1349,7 +1336,6 @@ export default function SortingVisualizer() {
                                     <Badge className="rounded-full bg-emerald-600">정렬 완료</Badge>
                                     <Badge className="rounded-full bg-rose-600">비교/교환</Badge>
                                     <Badge className="rounded-full bg-sky-600">보조 작업</Badge>
-                                    <Badge className="rounded-full bg-yellow-600">피벗</Badge>
                                 </div>
                             </CardTitle>
                         </CardHeader>
@@ -1363,8 +1349,6 @@ export default function SortingVisualizer() {
                                         color = "bg-rose-500";
                                     } else if (aux.has(index)) {
                                         color = "bg-sky-500";
-                                    } else if (pivot.has(index)) {
-                                        color = "bg-yellow-500";
                                     }
 
                                     return (
